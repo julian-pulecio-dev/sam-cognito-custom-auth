@@ -1,0 +1,121 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  Email:
+    Type: String
+    Default: "User email (Required)"
+  UserName:
+    Type: String
+    Default: "User Name (Required)"
+  ExampleCallbackURL:
+    Type: String
+    Default: "https://example.com/callback"
+
+Resources:
+  AuthAppUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: "AuthAppPool"
+      UsernameAttributes:
+        - "email"
+      UserAttributeUpdateSettings:
+         AttributesRequireVerificationBeforeUpdate: 
+            - "email"
+      AutoVerifiedAttributes:
+        - "email"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: "verified_email"
+            Priority: 1
+
+  AuthAppUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: UserPoolIdentityProvider
+    Properties:
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_CUSTOM_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+      PreventUserExistenceErrors: "ENABLED"
+      AllowedOAuthFlows: 
+        - code
+      AllowedOAuthFlowsUserPoolClient: True
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        - !Ref ExampleCallbackURL
+      ClientName: AuthApp-user-pool-client
+      SupportedIdentityProviders:
+        - COGNITO
+        - Google
+      UserPoolId: !Ref AuthAppUserPool 
+      
+  AuthAppCognitoDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub user-pool-domain-${AWS::AccountId}-${AWS::Region}
+      UserPoolId: !Ref AuthAppUserPool
+
+  UserPoolIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref AuthAppUserPool
+      ProviderName: "Google"
+      ProviderDetails:
+        client_id: "client_id"
+        client_secret: "client_secret"
+        authorize_scopes: "email profile openid"
+      ProviderType: "Google"
+      AttributeMapping:
+        email: "email"
+        email_verified: "email_verified"
+
+  PreSignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: pre_signup_lambda.handler
+      Runtime: python3.13
+      CodeUri: functions/
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            Effect: Allow
+            Action:
+              - cognito-idp:AdminCreateUser
+              - cognito-idp:AdminUpdateUserAttributes
+              - cognito-idp:ListUsers
+            Resource: '*'
+      Environment:
+        Variables:
+          CAPTCHA_SECRET_KEY: 6LeEStEqAAAAADBNpf49L9K9gyqSl9TjszNCOqZ7
+
+  PreSignupPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt PreSignUpFunction.Arn
+      Principal: "cognito-idp.amazonaws.com"
+      SourceArn: !GetAtt AuthAppUserPool.Arn
+
+Outputs:
+  UserPoolArn:
+    Value: !GetAtt AuthAppUserPool.Arn
+    Description: ARN of the user pool
+  UserPoolId:
+    Value: !Ref AuthAppUserPool
+    Description: ID of the user pool
+  ClientId:
+    Value: !GetAtt AuthAppUserPoolClient.ClientId
+    Description: Client ID of the app client

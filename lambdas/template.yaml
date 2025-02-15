@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AuthApp Lambdas Template
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 128
+    Runtime: python3.13
+    Environment:
+      Variables:
+        UserPoolID: !Ref UserPoolID
+        ClientID: !Ref ClientID
+    
+Parameters:
+  UserPoolID:
+    Type: String
+  ClientID:
+    Type: String
+
+Resources:
+
+  AuthLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: CognitoAccessPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - cognito-identity:*
+              - cognito-idp:*
+            Resource: '*'
+  
+  CognitoSignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/
+      Handler: cognito_signup.lambda_handler
+      
+
+Outputs:
+  CognitoSignUpFunctionArn:
+    Description: "CognitoSignUpFunctionARN"
+    Value: !GetAtt CognitoSignUpFunction.Arn
+
+  CognitoSignUpFunctionUri:
+    Description: "CognitoSignUpFunctionUri"
+    Value: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CognitoSignUpFunction.Arn}/invocations"

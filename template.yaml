@@ -1,43 +1,32 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  sam-cognito-custom-auth
-
-  Sample SAM Template for sam-cognito-custom-auth
-
-Globals:
-  Function:
-    Timeout: 3
+  Dialer Cloud Formation Template with nested stacks
 
 Resources:
 
-  AuthApi:
-    Type: 'AWS::ApiGateway::RestApi'
+  Cognito:
+    Type: AWS::Serverless::Application
     Properties:
-      Name: ReqValidatorsSample
+      Location: cognito/template.yaml
 
-  HelloWorldFunction:
-    Type: AWS::Serverless::Function
+      
+  Lambda:
+    Type: AWS::Serverless::Application
+    DependsOn: Cognito
     Properties:
-      CodeUri: hello_world/
-      Handler: app.lambda_handler
-      Runtime: python3.13
-      Architectures:
-        - x86_64
-      Events:
-        HelloWorld:
-          Type: Api
-          Properties:
-            Path: /hello
-            Method: get
+      Location: lambdas/template.yaml
+      Parameters: 
+          UserPoolID: !GetAtt Cognito.Outputs.UserPoolId
+          ClientID: !GetAtt Cognito.Outputs.ClientId
 
-Outputs:
-  HelloWorldApi:
-    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
-  HelloWorldFunction:
-    Description: "Hello World Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: "Implicit IAM Role created for Hello World function"
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+  
+  Api:
+    Type: AWS::Serverless::Application
+    DependsOn: Lambda
+    Properties:
+      Location: api/template.yaml
+      Parameters: 
+          CognitoSignUpFunctionUri: !GetAtt Lambda.Outputs.CognitoSignUpFunctionUri
+          CognitoSignUpFunctionArn: !GetAtt Lambda.Outputs.CognitoSignUpFunctionArn
+          UserPoolARN: !GetAtt Cognito.Outputs.UserPoolArn

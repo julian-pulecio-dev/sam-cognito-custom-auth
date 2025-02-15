@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description:  > 
+  AuthApp App CloudFormation API Template(Nested)
+
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 128
+    
+Parameters:
+    UserPoolARN:
+      Type: String
+    CognitoSignUpFunctionUri:
+      Type: String
+    CognitoSignUpFunctionArn:
+      Type: String
+
+
+Resources:
+
+  AuthorizersCognitoUserPools:
+      Type: AWS::ApiGateway::Authorizer
+      Properties:
+        Name: CognitoAuthorizer
+        Type: COGNITO_USER_POOLS
+        RestApiId: !Ref AuthApp
+        IdentitySource: method.request.header.authorizationToken
+        ProviderARNs: 
+          - !Ref UserPoolARN
+
+  AuthApp:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: "AuthApp Main Api" 
+      Name: AuthApp
+  
+  CognitoSignUpResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt AuthApp.RootResourceId
+      PathPart: 'Cognito'
+      RestApiId: !Ref AuthApp
+  
+  CognitoSignUpPOSTMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: POST
+      Integration:
+        Credentials: !GetAtt ApiGatewayToCognitoSignUpFunctionRole.Arn
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - ResponseTemplates: {"application/json": "{ \"body-json\": $input.json('$')}"}
+            StatusCode: 200
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        TimeoutInMillis: 29000
+        Type: AWS_PROXY
+        Uri: !Ref CognitoSignUpFunctionUri
+      MethodResponses: 
+        - ResponseModels: 
+            application/json : 'Empty'
+          StatusCode: 200  
+      ResourceId: !GetAtt CognitoSignUpResource.ResourceId
+      RestApiId: !Ref AuthApp
+              
+  AuthAppApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - CognitoSignUpPOSTMethod
+    Properties:
+      Description: AuthApp API Deployment
+      RestApiId: !Ref AuthApp
+        
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    DependsOn:
+      - CognitoSignUpPOSTMethod
+    Properties:
+      DeploymentId: !Ref AuthAppApiGatewayDeployment
+      Description: AuthApp API Stage
+      RestApiId: !Ref AuthApp
+      StageName: DEV
+      
+  ApiGatewayToCognitoSignUpFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+ 
+  ApiGatewayToHelloCognitoSignUpFunctionRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "ApiGatewayToHelloCognitoSignUpFunctionRolePolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        -
+          Effect: 'Allow'
+          Action: 'lambda:*'
+          Resource: !Ref CognitoSignUpFunctionArn
+      Roles: 
+      - 
+        !Ref ApiGatewayToCognitoSignUpFunctionRole
